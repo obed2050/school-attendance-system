@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+}
+
+enum FaceReferenceStatus {
+  NOT_REGISTERED
+  REGISTERED
+}
+
+enum DeviceRegistrationStatus {
+  NOT_REGISTERED
+  REGISTERED
+}
+
+enum DeviceStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isPublic  Boolean  @default(true) @map("is_public")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("departments")
+}
+
+model SchoolSettings {
+  id                  Int      @id @default(autoincrement())
+  singletonKey        String   @unique @default("default") @map("singleton_key")
+  schoolName          String   @map("school_name")
+  latitude            Float    @map("latitude")
+  longitude           Float    @map("longitude")
+  geofenceRadius      Int      @map("geofence_radius")
+  attendanceStartTime String   @map("attendance_start_time")
+  lateAfterTime       String   @map("late_after_time")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("school_settings")
+}
+
+model Device {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @map("user_id")
+  deviceTokenHash String       @unique @map("device_token_hash")
+  status          DeviceStatus @default(PENDING)
+  revokedAt       DateTime?    @map("revoked_at")
+  lastUsedAt      DateTime     @default(now()) @map("last_used_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  user       User         @relation(fields: [userId], references: [id])
+  attendance Attendance[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("devices")
+}
+
+model User {
+  id                          Int                      @id @default(autoincrement())
+  fullName                    String                   @map("full_name")
+  email                       String                   @unique
+  phoneNumber                 String                   @unique @map("phone_number")
+  departmentId                Int                      @map("department_id")
+  passwordHash                String                   @map("password_hash")
+  role                        Role                     @default(STAFF)
+  status                      UserStatus               @default(PENDING)
+  faceReference               String?                  @map("face_reference")
+  faceReferenceStatus         FaceReferenceStatus      @default(NOT_REGISTERED) @map("face_reference_status")
+  deviceRegistrationStatus    DeviceRegistrationStatus @default(NOT_REGISTERED) @map("device_registration_status")
+  lastAttendanceAt            DateTime?                @map("last_attendance_at")
+  lastAttendanceDeviceId      Int?                     @map("last_attendance_device_id")
+  lastAttendanceVerificationAt DateTime?               @map("last_attendance_verification_at")
+  createdAt                   DateTime                 @default(now()) @map("created_at")
+  updatedAt                   DateTime                 @updatedAt @map("updated_at")
+
+  department    Department      @relation(fields: [departmentId], references: [id])
+  attendance    Attendance[]
+  devices       Device[]
+  securityEvents SecurityEvent[]
+
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([status])
+  @@index([role])
+  @@index([departmentId])
+  @@map("users")
+}
+
+model Attendance {
+  id                        Int                 @id @default(autoincrement())
+  userId                    Int                 @map("user_id")
+  attendanceDate            DateTime            @db.Date @map("attendance_date")
+  checkInTime               DateTime            @map("check_in_time")
+  status                    AttendanceStatus    @default(PRESENT)
+  locationVerified          Boolean             @default(false) @map("location_verified")
+  locationVerifiedAt        DateTime?           @map("location_verified_at")
+  locationVerificationResult String?            @map("location_verification_result")
+  faceVerified              Boolean             @default(false) @map("face_verified")
+  livenessVerified          Boolean             @default(false) @map("liveness_verified")
+  deviceVerified            Boolean             @default(false) @map("device_verified")
+  qrVerified                Boolean             @default(false) @map("qr_verified")
+  verificationStatus        VerificationStatus  @default(PENDING) @map("verification_status")
+  verificationFailureReason String?             @map("verification_failure_reason")
+  deviceId                  Int?                @map("device_id")
+  createdAt                 DateTime            @default(now()) @map("created_at")
+
+  user   User     @relation(fields: [userId], references: [id])
+  device Device?  @relation(fields: [deviceId], references: [id])
+
+  @@unique([userId, attendanceDate])
+  @@index([userId])
+  @@index([attendanceDate])
+  @@index([status])
+  @@map("attendance")
+}
+
+model SecurityEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  eventType String   @map("event_type")
+  message   String?
+  metadata  Json?    @map("metadata")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("security_events")
+}
