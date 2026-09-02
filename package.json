@@ -4,18 +4,17 @@
   "description": "School Staff Attendance Management System",
   "private": true,
   "workspaces": [
-    "backend",
-    "frontend"
+    "backend"
   ],
   "scripts": {
     "dev": "npm --workspace backend run dev",
-    "dev:frontend": "npm --workspace frontend run dev",
-    "build": "npm --workspace backend run build && npm --workspace frontend run build",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --workspace backend run build && npm --prefix frontend run build",
     "build:backend": "npm --workspace backend run build",
-    "build:frontend": "npm --workspace frontend run build",
-    "lint": "npm --workspace backend run lint && npm --workspace frontend run lint",
-    "typecheck": "npm --workspace backend run typecheck && npm --workspace frontend run typecheck",
-    "format": "npm --workspace backend run format && npm --workspace frontend run format",
+    "build:frontend": "npm --prefix frontend run build",
+    "lint": "npm --workspace backend run lint && npm --prefix frontend run lint",
+    "typecheck": "npm --workspace backend run typecheck && npm --prefix frontend run typecheck",
+    "format": "npm --workspace backend run format && npm --prefix frontend run format",
     "test": "npm --workspace backend run test",
     "migrate": "npm --workspace backend run migrate",
     "migrate:deploy": "npm --workspace backend run migrate:deploy",

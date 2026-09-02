@@ -9,9 +9,9 @@ A real-world school staff attendance system with role-based access for **STAFF**
 
 ```
 school-attendance-system/
-├── frontend/        # React + TypeScript + Vite + Tailwind CSS frontend
-├── backend/         # Node.js + Express + TypeScript + PostgreSQL backend
-├── package.json     # npm workspaces root
+├── frontend/        # React + TypeScript + Vite + Tailwind CSS frontend (standalone package)
+├── backend/         # Node.js + Express + TypeScript + PostgreSQL backend (npm workspace)
+├── package.json     # npm workspaces root (backend only)
 └── README.md
 ```
 
@@ -66,7 +66,7 @@ npm run dev       # starts the API at http://localhost:5000
 ### 5. Run the frontend
 
 ```bash
-npm --workspace client run dev
+npm run dev:frontend   # or `npm --prefix frontend run dev`
 ```
 
 ---
