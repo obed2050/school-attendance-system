@@ -11,6 +11,9 @@ const allowedOrigins = [
   env.FRONTEND_URL || env.CLIENT_URL
 ].filter((origin, index, list) => origin && list.indexOf(origin) === index);
 
+// eslint-disable-next-line no-console
+console.log(`[CORS] Allowed origins: ${JSON.stringify(allowedOrigins)}`);
+
 export function createApp(): Application {
   const app = express();
 
@@ -20,7 +23,6 @@ export function createApp(): Application {
   app.use(
     cors({
       origin(origin, callback) {
-        // Allow non-browser requests (curl, server-to-server, same-origin fetches).
         if (!origin || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }

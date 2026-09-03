@@ -3,7 +3,7 @@ import { z } from "zod";
 
 dotenv.config();
 
-const envSchema = z.object({
+const baseSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
@@ -13,7 +13,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
   PORT: z.coerce.number().default(5000),
   CLIENT_URL: z.string().default("http://localhost:5173"),
-  FRONTEND_URL: z.string().optional(),
+  FRONTEND_URL: z.string().optional().transform((v) => v?.trim() || undefined),
   SCHOOL_NAME: z.string().default("My School"),
   SCHOOL_LATITUDE: z.coerce.number().min(-90).max(90).default(-1.9441),
   SCHOOL_LONGITUDE: z.coerce.number().min(-180).max(180).default(30.0619),
@@ -26,6 +26,19 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().default("admin@school.com"),
   ADMIN_PASSWORD: z.string().default("")
 });
+
+const envSchema = baseSchema.refine(
+  (data) => {
+    if (data.NODE_ENV === "production" && !data.FRONTEND_URL) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message:
+      "FRONTEND_URL is required in production (set it to the deployed Vercel URL for CORS)"
+  }
+);
 
 const parsed = envSchema.safeParse(process.env);
 
