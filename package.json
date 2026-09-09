@@ -18,6 +18,7 @@
     "test": "npm --workspace backend run test",
     "migrate": "npm --workspace backend run migrate",
     "migrate:deploy": "npm --workspace backend run migrate:deploy",
-    "seed": "npm --workspace backend run seed"
+    "seed": "npm --workspace backend run seed",
+    "seed:prod": "npm --workspace backend run seed:prod"
   }
 }

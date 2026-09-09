@@ -50,40 +50,55 @@ async function seedDepartments(): Promise<void> {
 }
 
 async function seedAdmin(): Promise<void> {
-  if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) {
+  const adminEmail = env.ADMIN_EMAIL?.trim();
+  const adminPassword = env.ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPassword) {
+    if (env.NODE_ENV === "production") {
+      throw new Error(
+        "ADMIN_EMAIL and ADMIN_PASSWORD must both be set to seed the initial admin in production. " +
+          "Seeding aborted - no admin was created."
+      );
+    }
     // eslint-disable-next-line no-console
     console.log("  ⚠ ADMIN_EMAIL / ADMIN_PASSWORD not set. Skipping admin seed.");
+    return;
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+  if (existing) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `  ⚠ Admin already exists (${adminEmail}); no changes made, password untouched.`
+    );
     return;
   }
 
   const adminDept = await prisma.department.findUnique({
     where: { name: "Administration" }
   });
+  if (!adminDept) {
+    throw new Error(
+      "Administration department not found. Departments must be seeded before the admin."
+    );
+  }
 
-  const passwordHash = await hashPassword(env.ADMIN_PASSWORD);
+  const passwordHash = await hashPassword(adminPassword);
 
-  await prisma.user.upsert({
-    where: { email: env.ADMIN_EMAIL },
-    update: {
-      fullName: env.ADMIN_NAME,
-      passwordHash,
-      role: "ADMIN",
-      status: "ACTIVE",
-      departmentId: adminDept?.id ?? undefined
-    },
-    create: {
-      fullName: env.ADMIN_NAME,
-      email: env.ADMIN_EMAIL,
+  await prisma.user.create({
+    data: {
+      fullName: env.ADMIN_NAME || adminEmail,
+      email: adminEmail,
       phoneNumber: "000000000000",
       passwordHash,
       role: "ADMIN",
       status: "ACTIVE",
-      departmentId: adminDept?.id ?? 0
+      departmentId: adminDept.id
     }
   });
 
   // eslint-disable-next-line no-console
-  console.log(`  ✔ Admin seeded: ${env.ADMIN_EMAIL}`);
+  console.log(`  ✔ Admin created: ${adminEmail}`);
 }
 
 async function main(): Promise<void> {

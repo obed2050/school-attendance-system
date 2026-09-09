@@ -8,7 +8,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "prebuild": "prisma generate",
     "build": "tsc -p tsconfig.json",
-    "start": "prisma migrate deploy && node dist/server.js",
+    "start": "prisma migrate deploy && prisma db seed && node dist/server.js",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
@@ -18,10 +18,11 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "ts-node src/prisma/seed.ts",
+    "seed:prod": "node dist/prisma/seed.js",
     "test": "jest --runInBand"
   },
   "prisma": {
-    "seed": "ts-node src/prisma/seed.ts"
+    "seed": "node dist/prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
