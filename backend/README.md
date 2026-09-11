@@ -111,6 +111,11 @@ ACTIVE → 200 with JWT. Wrong credentials → generic 401.
 **POST `/api/attendance`** — STAFF only. Submits today's attendance. Returns 409
 "Attendance already submitted today." if already submitted that day.
 
+**POST `/api/attendance/verify-location`** — STAFF only. Read-only geofence
+pre-check for the frontend "Verify my location" step. Runs the exact same rules
+as submission (never records attendance), returning
+`{ verified, reason, distanceMeters, accuracy }`.
+
 **GET `/api/attendance/me`** — STAFF only. Returns the staff member's attendance history.
 
 ### Admin (ADMIN)

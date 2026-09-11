@@ -40,6 +40,28 @@ export const attendanceSubmitSchema = z.object({
 
 export type AttendanceSubmitBody = z.infer<typeof attendanceSubmitSchema>;
 
+/**
+ * Location pre-check body (STAFF only). Mirrors the coordinate bounds used at
+ * attendance submission so the "Verify my location" step reports the same
+ * result the server would later enforce.
+ */
+export const locationPrecheckSchema = z.object({
+  latitude: z
+    .number({ invalid_type_error: "latitude must be a number" })
+    .min(-90, "latitude must be between -90 and 90")
+    .max(90, "latitude must be between -90 and 90"),
+  longitude: z
+    .number({ invalid_type_error: "longitude must be a number" })
+    .min(-180, "longitude must be between -180 and 180")
+    .max(180, "longitude must be between -180 and 180"),
+  accuracy: z
+    .number({ invalid_type_error: "accuracy must be a number" })
+    .positive("accuracy must be a positive number")
+    .max(10000, "accuracy must be 10000 meters or less")
+});
+
+export type LocationPrecheckBody = z.infer<typeof locationPrecheckSchema>;
+
 export const attendanceQuerySchema = z
   .object({
     date: dateSchema.optional(),

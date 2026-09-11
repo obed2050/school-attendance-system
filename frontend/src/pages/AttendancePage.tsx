@@ -10,8 +10,9 @@ import {
   LogIn,
   Camera,
   CircleCheck,
+  CircleAlert,
+  TriangleAlert,
   Check,
-  LocateFixed,
   RefreshCw
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -21,6 +22,7 @@ import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { FaceCapture } from "../components/FaceCapture";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { LiveFaceResult } from "../utils/faceDetection";
 import { LocationFix, AttendanceStatus, User } from "../types";
 
@@ -29,6 +31,15 @@ interface SubmittedInfo {
   time: string;
   status: AttendanceStatus;
 }
+
+interface LocationStatus {
+  kind: "verified" | "warning" | "failed" | "unable";
+  title: string;
+  message: string;
+  accuracy: number;
+}
+
+const LOW_ACCURACY_THRESHOLD_METERS = 50;
 
 const steps = [
   { label: "QR", icon: QrCode },
@@ -111,7 +122,7 @@ export function AttendancePage() {
   const [submitted, setSubmitted] = useState<SubmittedInfo | null>(null);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -188,31 +199,87 @@ export function AttendancePage() {
 
   function handleVerifyLocation() {
     setError(null);
-    setNotice(null);
+    setLocationStatus(null);
     if (!("geolocation" in navigator)) {
-      setError("Location is not supported on this device.");
+      setLocationStatus({
+        kind: "unable",
+        title: "🔴 Unable to verify your location",
+        message: "Please enable location permission and try again.",
+        accuracy: 0
+      });
       return;
     }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const fix: LocationFix = {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: Math.round(pos.coords.accuracy)
         };
         setLocationFix(fix);
-        if (fix.accuracy > 50) {
-          setNotice(
-            "Location accuracy is low. Move to an open area and try again if you have issues."
-          );
+        try {
+          const result = await attendanceService.verifyLocation({
+            latitude: fix.latitude,
+            longitude: fix.longitude,
+            accuracy: fix.accuracy
+          });
+          if (result.verified && result.reason === "inside") {
+            if (fix.accuracy > LOW_ACCURACY_THRESHOLD_METERS) {
+              setLocationStatus({
+                kind: "warning",
+                title: "🟡 Location verified, but accuracy is low",
+                message:
+                  "Your location was verified, but GPS accuracy is low. Move to an open area for better accuracy.",
+                accuracy: fix.accuracy
+              });
+            } else {
+              setLocationStatus({
+                kind: "verified",
+                title: "🟢 Location verified",
+                message: "You are within the school attendance area.",
+                accuracy: fix.accuracy
+              });
+            }
+            setCurrentStep(3);
+          } else if (result.reason === "outside") {
+            setLocationStatus({
+              kind: "failed",
+              title: "🔴 Location verification failed",
+              message: "You are outside the allowed school attendance area.",
+              accuracy: fix.accuracy
+            });
+          } else {
+            setLocationStatus({
+              kind: "failed",
+              title: "🔴 Location verification failed",
+              message:
+                "Your location could not be verified. Please move to an open area for better accuracy and try again.",
+              accuracy: fix.accuracy
+            });
+          }
+        } catch {
+          setLocationStatus({
+            kind: "failed",
+            title: "🔴 Location verification failed",
+            message: "We could not verify your location right now. Please try again.",
+            accuracy: fix.accuracy
+          });
+        } finally {
+          setLocating(false);
         }
-        setCurrentStep(3);
-        setLocating(false);
       },
       (err) => {
-        setError(geolocationErrorMessage(err.code));
         setLocating(false);
+        setLocationStatus({
+          kind: "unable",
+          title: "🔴 Unable to verify your location",
+          message:
+            err.code === 1
+              ? "Please enable location permission and try again."
+              : geolocationErrorMessage(err.code),
+          accuracy: 0
+        });
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
@@ -221,7 +288,7 @@ export function AttendancePage() {
   async function handleSubmit() {
     if (!locationFix || !faceResult) return;
     setError(null);
-    setNotice(null);
+    setLocationStatus(null);
     setSubmitting(true);
     try {
       const result = await attendanceService.submit({
@@ -274,14 +341,17 @@ export function AttendancePage() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-alt))]"
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">Logout</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-alt))]"
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+        </div>
       </header>
 
       <p className="mb-3 text-sm text-[hsl(var(--muted))]">{formatDateTime(now)}</p>
@@ -348,11 +418,6 @@ export function AttendancePage() {
           <Alert variant="error" message={error} />
         </div>
       )}
-      {notice && (
-        <div className="mb-4">
-          <Alert variant="info" message={notice} />
-        </div>
-      )}
 
       {entryLoading ? (
         <p className="py-10 text-center text-sm text-[hsl(var(--muted))]">
@@ -372,15 +437,39 @@ export function AttendancePage() {
                 and is never stored or tracked.
               </p>
 
-              {locationFix && (
-                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+              {locationStatus && (
+                <div
+                  className={`mt-4 rounded-xl border p-3 text-sm ${
+                    locationStatus.kind === "verified"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                      : locationStatus.kind === "warning"
+                        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                        : "border-red-200 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                  }`}
+                  role={
+                    locationStatus.kind === "failed" ||
+                    locationStatus.kind === "unable"
+                      ? "alert"
+                      : "status"
+                  }
+                  aria-live="polite"
+                >
                   <p className="flex items-center gap-2 font-medium">
-                    <LocateFixed className="h-4 w-4" aria-hidden />
-                    Location captured
+                    {locationStatus.kind === "verified" ? (
+                      <CircleCheck className="h-4 w-4 shrink-0" aria-hidden />
+                    ) : locationStatus.kind === "warning" ? (
+                      <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                    ) : (
+                      <CircleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                    )}
+                    <span>{locationStatus.title}</span>
                   </p>
-                  <p className="mt-1 text-xs opacity-80">
-                    Accuracy ~{locationFix.accuracy} m
-                  </p>
+                  <p className="mt-1 text-xs opacity-80">{locationStatus.message}</p>
+                  {locationStatus.accuracy > 0 && (
+                    <p className="mt-1 text-xs opacity-70">
+                      GPS accuracy ~{locationStatus.accuracy} m
+                    </p>
+                  )}
                 </div>
               )}
 

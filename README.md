@@ -131,6 +131,7 @@ ADMIN_PASSWORD=""
 | Method | Endpoint              | Access | Description                      |
 | ------ | --------------------- | ------ | -------------------------------- |
 | POST   | `/api/attendance`     | STAFF  | Submit today's attendance (once) |
+| POST   | `/api/attendance/verify-location` | STAFF | Geofence pre-check for the "Verify my location" step |
 | GET    | `/api/attendance/me`  | STAFF  | View own attendance history      |
 
 ### Admin

@@ -9,7 +9,7 @@ import {
 } from "./attendanceTime";
 import { getOrCreateSettings } from "./settings.service";
 import { findDeviceForUser } from "./device.service";
-import { verifyLocation, LocationInput } from "./geofence.service";
+import { verifyLocation, LocationInput, LocationVerificationResult } from "./geofence.service";
 import {
   cosineSimilarity,
   decryptEmbedding,
@@ -356,6 +356,23 @@ export async function submitAttendance(
     }
     throw err;
   }
+}
+
+/**
+ * Read-only geofence pre-check for the "Verify my location" step. It runs the
+ * exact same rules the submission flow enforces, but never records attendance
+ * and never weakens the server-side check at submission time.
+ */
+export async function precheckLocation(
+  location: LocationInput
+): Promise<LocationVerificationResult> {
+  const settings = await getOrCreateSettings();
+  return verifyLocation(
+    location,
+    settings.latitude,
+    settings.longitude,
+    settings.geofenceRadius
+  );
 }
 
 export async function getMyAttendance(userId: number) {

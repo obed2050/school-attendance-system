@@ -1,14 +1,15 @@
 import { Response } from "express";
 import {
   submitAttendance,
-  getMyAttendance
+  getMyAttendance,
+  precheckLocation
 } from "../services/attendance.service";
 import {
   DEVICE_COOKIE_NAME,
   findDeviceForUser,
   provisionDevice
 } from "../services/device.service";
-import { AttendanceSubmitBody } from "../validators/attendance";
+import { AttendanceSubmitBody, LocationPrecheckBody } from "../validators/attendance";
 import { success } from "../utils/apiResponse";
 import { catchAsync } from "../utils/catchAsync";
 
@@ -116,4 +117,14 @@ export const deviceStatusHandler = catchAsync(async (req, res: Response) => {
 export const myAttendanceHandler = catchAsync(async (req, res: Response) => {
   const records = await getMyAttendance(req.user!.id);
   success(res, 200, "Attendance records retrieved", { records });
+});
+
+/**
+ * Geofence pre-check for the "Verify my location" step. Returns the same
+ * verified/reason the submission flow would enforce, purely for display.
+ */
+export const verifyLocationHandler = catchAsync(async (req, res: Response) => {
+  const { latitude, longitude, accuracy } = req.body as LocationPrecheckBody;
+  const result = await precheckLocation({ latitude, longitude, accuracy });
+  success(res, 200, "Location verified", result);
 });

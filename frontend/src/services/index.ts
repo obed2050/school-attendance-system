@@ -12,7 +12,8 @@ import {
   Role,
   UserStatus,
   FaceReferenceStatus,
-  SchoolSettings
+  SchoolSettings,
+  LocationVerificationResult
 } from "../types";
 
 export interface AdminAttendanceFilters {
@@ -132,6 +133,20 @@ export const attendanceService = {
   async myRecords(): Promise<MyAttendanceRecord[]> {
     const res = await api.get("/attendance/me");
     return res.data.data.records;
+  },
+
+  /**
+   * Pre-check a GPS reading against the school geofence. The server runs the
+   * exact same geofence rules used at submission time; the returned status is
+   * informational only and never grants attendance on its own.
+   */
+  async verifyLocation(payload: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  }): Promise<LocationVerificationResult> {
+    const res = await api.post("/attendance/verify-location", payload);
+    return res.data.data;
   },
 
   /** Provision (or reuse) this browser's device via an HttpOnly cookie. */

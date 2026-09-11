@@ -4,18 +4,23 @@ import {
   myAttendanceHandler,
   registerDeviceHandler,
   provisionDeviceHandler,
-  deviceStatusHandler
+  deviceStatusHandler,
+  verifyLocationHandler
 } from "../controllers/attendance.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/role";
 import { validate } from "../middleware/validate";
-import { attendanceSubmitSchema } from "../validators/attendance";
+import {
+  attendanceSubmitSchema,
+  locationPrecheckSchema
+} from "../validators/attendance";
 
 const router = Router();
 
 router.use(requireAuth);
 
 router.post("/", requireRole("STAFF"), validate(attendanceSubmitSchema), submitAttendanceHandler);
+router.post("/verify-location", requireRole("STAFF"), validate(locationPrecheckSchema), verifyLocationHandler);
 router.post("/device-register", requireRole("STAFF"), registerDeviceHandler);
 router.post("/device", requireRole("STAFF"), provisionDeviceHandler);
 router.get("/device", requireRole("STAFF"), deviceStatusHandler);

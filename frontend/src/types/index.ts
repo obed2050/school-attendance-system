@@ -43,6 +43,15 @@ export interface LocationFix {
   accuracy: number;
 }
 
+export type LocationVerificationReason = "inside" | "outside" | "poor_accuracy";
+
+export interface LocationVerificationResult {
+  verified: boolean;
+  distanceMeters: number;
+  accuracy: number;
+  reason: LocationVerificationReason;
+}
+
 export interface SchoolSettings {
   id: number;
   schoolName: string;
