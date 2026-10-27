@@ -3,16 +3,12 @@ import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
-import { env } from "./config/env";
 import rootRoutes from "./routes";
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler";
 
 const allowedOrigins = [
-  env.CLIENT_URL,
-  env.FRONTEND_URL,
-]
-  .filter((origin): origin is string => Boolean(origin))
-  .map((origin) => origin.replace(/\/$/, ""));
+  "https://school-attendance-system-cms.vercel.app",
+];
 
 // eslint-disable-next-line no-console
 console.log("[CORS] Allowed origins:", JSON.stringify(allowedOrigins));
