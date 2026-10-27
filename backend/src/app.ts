@@ -1,3 +1,4 @@
+
 import express, { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,11 +9,13 @@ import { notFoundHandler, errorHandler } from "./middleware/errorHandler";
 
 const allowedOrigins = [
   env.CLIENT_URL,
-  env.FRONTEND_URL || env.CLIENT_URL
-].filter((origin, index, list) => origin && list.indexOf(origin) === index);
+  env.FRONTEND_URL,
+]
+  .filter((origin): origin is string => Boolean(origin))
+  .map((origin) => origin.replace(/\/$/, ""));
 
 // eslint-disable-next-line no-console
-console.log(`[CORS] Allowed origins: ${JSON.stringify(allowedOrigins)}`);
+console.log("[CORS] Allowed origins:", JSON.stringify(allowedOrigins));
 
 export function createApp(): Application {
   const app = express();
@@ -20,17 +23,27 @@ export function createApp(): Application {
   app.disable("x-powered-by");
 
   app.use(helmet());
+
   app.use(
     cors({
       origin(origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }
-        return callback(null, false);
+
+        console.error("[CORS] Blocked origin:", origin);
+
+        return callback(
+          new Error(`Origin not allowed by CORS: ${origin}`)
+        );
       },
-      credentials: true
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      credentials: true,
+      optionsSuccessStatus: 204,
     })
   );
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
