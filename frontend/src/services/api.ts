@@ -28,22 +28,90 @@ api.interceptors.request.use((config) => {
 /**
  * Extract a human-readable message from an API / axios error.
  */
+
+/**
+ * Extract a human-readable message from an API / axios error.
+ */
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<ApiErrorData>;
-    if (axiosError.response?.data?.message) {
-      return axiosError.response.data.message;
+    const responseData = error.response?.data as
+      | {
+          message?: unknown;
+          errors?: unknown;
+          details?: unknown;
+        }
+      | undefined;
+
+    const message =
+      typeof responseData?.message === "string"
+        ? responseData.message
+        : "";
+
+    const details = Array.isArray(responseData?.details)
+      ? responseData.details
+      : Array.isArray(responseData?.errors)
+        ? responseData.errors
+        : [];
+
+    if (details.length > 0) {
+      const messages = details
+        .map((item: unknown) => {
+          if (typeof item === "string") {
+            return item;
+          }
+
+          if (item && typeof item === "object") {
+            const detail = item as {
+              path?: unknown;
+              field?: unknown;
+              message?: unknown;
+            };
+
+            const field =
+              typeof detail.field === "string"
+                ? detail.field
+                : Array.isArray(detail.path)
+                  ? detail.path.join(".")
+                  : "Field";
+
+            const description =
+              typeof detail.message === "string"
+                ? detail.message
+                : "Invalid value";
+
+            return `${field}: ${description}`;
+          }
+
+          return null;
+        })
+        .filter((item): item is string => item !== null);
+
+      if (messages.length > 0) {
+        return `${message || "Validation failed"}: ${messages.join("; ")}`;
+      }
     }
-    if (axiosError.code === "ECONNABORTED" || axiosError.code === "ETIMEDOUT") {
+
+    if (message) {
+      return message;
+    }
+
+    if (
+      error.code === "ECONNABORTED" ||
+      error.code === "ETIMEDOUT"
+    ) {
       return "The request timed out. Please try again.";
     }
-    if (axiosError.code === "ERR_NETWORK") {
+
+    if (error.code === "ERR_NETWORK") {
       return "Could not reach the server. Please check your connection.";
     }
+
     return "Something went wrong. Please try again.";
   }
+
   if (error instanceof Error) {
     return error.message;
   }
+
   return "Something went wrong. Please try again.";
 }
