@@ -1,11 +1,15 @@
-import { useRef, useState } from "react";
+
+import { useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, ScanFace } from "lucide-react";
+
 import { useFaceCamera } from "../hooks/useFaceCamera";
 import {
+  DESCRIPTOR_LENGTH,
   loadFaceModels,
   runLiveFaceSession,
-  LiveFaceResult
+  type LiveFaceResult,
 } from "../utils/faceDetection";
+
 import { Button } from "./ui/Button";
 import { Alert } from "./ui/Alert";
 import { Spinner } from "./ui/Spinner";
@@ -18,21 +22,40 @@ interface FaceCaptureProps {
   hint?: string;
 }
 
-/**
- * Camera + liveness capture panel. Starts the front camera, runs the blink
- * liveness session and reports the resulting face embedding to the caller.
- * Works for both face enrollment (/face-setup) and the daily attendance check.
- */
+function isValidDescriptor(descriptor: number[]): boolean {
+  if (
+    descriptor.length !== DESCRIPTOR_LENGTH ||
+    !descriptor.every(
+      (value) => Number.isFinite(value) && Math.abs(value) <= 100
+    )
+  ) {
+    return false;
+  }
+
+  const norm = Math.sqrt(
+    descriptor.reduce((sum, value) => sum + value * value, 0)
+  );
+
+  return Number.isFinite(norm) && norm > 1e-12;
+}
+
 export function FaceCapture({
   onSuccess,
   minBlinks = 2,
   minTrackedMs = 2000,
-  startLabel = "Start identity check",
-  hint
+  startLabel = "Start face verification",
+  hint,
 }: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { startCamera, stopCamera, cameraReady, cameraError } =
-    useFaceCamera(videoRef);
+  const captureAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(false);
+
+  const {
+    startCamera,
+    stopCamera,
+    cameraReady,
+    cameraError,
+  } = useFaceCamera(videoRef);
 
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -40,138 +63,235 @@ export function FaceCapture({
   const [blinksSoFar, setBlinksSoFar] = useState(0);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      captureAbortRef.current?.abort();
+      captureAbortRef.current = null;
+    };
+  }, []);
+
   async function ensureModels(): Promise<boolean> {
-    setModelsError(null);
-    setModelsLoading(true);
+    if (mountedRef.current) {
+      setModelsError(null);
+      setModelsLoading(true);
+    }
+
     try {
       await loadFaceModels();
-      setModelsLoading(false);
       return true;
     } catch {
-      setModelsLoading(false);
-      setModelsError(
-        "The face recognition models could not be loaded. Please check your connection and try again."
-      );
+      if (mountedRef.current) {
+        setModelsError(
+          "Face recognition models could not be loaded. Check your connection and try again."
+        );
+      }
+
       return false;
+    } finally {
+      if (mountedRef.current) {
+        setModelsLoading(false);
+      }
     }
   }
 
-  async function handleStartCapture() {
-    setCaptureError(null);
+  function cancelCapture() {
+    captureAbortRef.current?.abort();
+    captureAbortRef.current = null;
+
+    setCapturing(false);
     setBlinksSoFar(0);
+
+    // Cancelling capture also releases the camera.
+    stopCamera();
+  }
+
+  async function handleStartCapture() {
+    if (capturing) return;
+
+    setCaptureError(null);
+    setModelsError(null);
+    setBlinksSoFar(0);
+
     if (!cameraReady) {
       setCaptureError("Start the camera first.");
       return;
     }
+
     const video = videoRef.current;
-    if (!video) {
-      setCaptureError("Camera is not ready yet.");
+
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setCaptureError(
+        "The camera is not ready yet. Wait for the video to appear and try again."
+      );
       return;
     }
 
-    const ok = await ensureModels();
-    if (!ok) return;
-
+    const controller = new AbortController();
+    captureAbortRef.current = controller;
     setCapturing(true);
-    try {
-      const result = await runLiveFaceSession(video, {
-        minBlinks,
-        minTrackedMs,
-        onProgress: ({ blinks }) => setBlinksSoFar(blinks)
-      });
 
-      if (!result.livenessPassed || result.descriptor.length !== 128) {
-        setCaptureError(
-          "We could not confirm you are a live person. Look at the camera and blink a few times, then retry."
-        );
-        setCapturing(false);
+    try {
+      const modelsReady = await ensureModels();
+
+      if (!modelsReady || controller.signal.aborted) {
         return;
       }
 
-      stopCamera();
-      onSuccess(result);
-    } catch {
-      setCaptureError(
-        "The identity check failed unexpectedly. Please try again."
-      );
+      const result = await runLiveFaceSession(video, {
+        minBlinks,
+        minTrackedMs,
+        timeoutMs: 20_000,
+        signal: controller.signal,
+        onProgress: ({ blinks }) => {
+          if (
+            mountedRef.current &&
+            !controller.signal.aborted
+          ) {
+            setBlinksSoFar(blinks);
+          }
+        },
+      });
+
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+
+      if (
+        !result.livenessPassed ||
+        !result.faceVisible ||
+        !isValidDescriptor(result.descriptor)
+      ) {
+        setCaptureError(
+          "We could not validate your face. Keep your face in view, look at the camera, blink naturally, and try again."
+        );
+        return;
+      }
+
+      // Release the camera before notifying the parent component.
       setCapturing(false);
+      captureAbortRef.current = null;
+      stopCamera();
+
+      onSuccess(result);
+    } catch (error: unknown) {
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+
+      const errorName =
+        error instanceof Error ? error.name : "";
+
+      if (errorName === "TimeoutError") {
+        setCaptureError(
+          "Face verification took too long. Make sure your face is clearly visible and try again."
+        );
+      } else if (errorName === "AbortError") {
+        setCaptureError("Face verification was cancelled.");
+      } else {
+        setCaptureError(
+          "Face verification failed. Check the camera and try again."
+        );
+      }
+    } finally {
+      if (captureAbortRef.current === controller) {
+        captureAbortRef.current = null;
+
+        if (mountedRef.current) {
+          setCapturing(false);
+        }
+      }
     }
   }
 
   return (
     <div className="space-y-4">
       {(cameraError || captureError || modelsError) && (
-        <Alert
-          variant="error"
-          message={cameraError ?? captureError ?? modelsError ?? ""}
-        />
+        <Alert variant="error">
+          {cameraError || captureError || modelsError}
+        </Alert>
       )}
 
-      <div className="relative overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-black">
+      <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-black">
         <video
           ref={videoRef}
           playsInline
           muted
           autoPlay
-          className="aspect-[4/3] w-full -scale-x-100 object-cover"
+          aria-label="Face verification camera"
+          className="aspect-[4/3] w-full object-cover"
         />
 
+        {!cameraReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gray-950 text-white">
+            <Camera size={36} />
+            <p className="text-sm">Camera is not running</p>
+          </div>
+        )}
+
         {capturing && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
-            <Spinner className="h-8 w-8" />
-            <p className="px-4 text-center text-sm">
-              Look at the camera and blink a few times...
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 px-4 text-center text-white">
+            <Spinner />
+            <p className="font-medium">
+              {modelsLoading
+                ? "Loading face recognition models..."
+                : "Verifying your face..."}
             </p>
-            <p className="text-xs opacity-90">
-              Blinks detected: {blinksSoFar} / {minBlinks}
+
+            {!modelsLoading && (
+              <p className="text-sm">
+                Blinks detected: {blinksSoFar} / {minBlinks}
+              </p>
+            )}
+
+            <p className="text-xs">
+              Keep your face in view and blink naturally.
             </p>
           </div>
         )}
       </div>
 
       {hint && (
-        <p className="text-sm text-[hsl(var(--muted))]">
-          {capturing ? "Keep your face inside the camera frame." : hint}
-        </p>
+        <p className="text-sm text-gray-600">{hint}</p>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {!capturing && !cameraReady && (
-          <Button
-            onClick={() => {
-              setCaptureError(null);
-              startCamera();
-            }}
-            className="flex-1"
-          >
-            <Camera className="h-4 w-4" aria-hidden />
+      <div className="flex flex-wrap gap-3">
+        {!cameraReady ? (
+          <Button onClick={startCamera}>
+            <Camera size={16} className="mr-2" />
             Start camera
+          </Button>
+        ) : capturing ? (
+          <Button onClick={cancelCapture} variant="secondary">
+            Cancel verification
+          </Button>
+        ) : (
+          <Button
+            onClick={handleStartCapture}
+            disabled={modelsLoading}
+          >
+            {modelsLoading ? (
+              <Spinner />
+            ) : (
+              <ScanFace size={16} className="mr-2" />
+            )}
+            {modelsLoading ? "Loading models..." : startLabel}
           </Button>
         )}
 
-        {!capturing && cameraReady && (
-          <>
-            <Button
-              onClick={handleStartCapture}
-              disabled={modelsLoading}
-              loading={modelsLoading}
-              loadingText="Loading models..."
-              className="flex-1"
-            >
-              <ScanFace className="h-4 w-4" aria-hidden />
-              {startLabel}
-            </Button>
-            <Button variant="secondary" onClick={stopCamera} className="sm:flex-none">
-              <RefreshCw className="h-4 w-4" aria-hidden />
-              <span className="sm:hidden">Restart camera</span>
-              <span className="hidden sm:inline">Restart</span>
-            </Button>
-          </>
-        )}
-
-        {capturing && (
-          <Button variant="secondary" onClick={stopCamera} disabled className="flex-1">
-            Capturing...
+        {cameraReady && !capturing && (
+          <Button
+            onClick={async () => {
+              setCaptureError(null);
+              setModelsError(null);
+              await startCamera();
+            }}
+            variant="secondary"
+          >
+            <RefreshCw size={16} className="mr-2" />
+            Restart camera
           </Button>
         )}
       </div>
