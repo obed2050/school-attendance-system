@@ -1,3 +1,4 @@
+
 import { api, API_BASE_URL } from "./api";
 import { getToken } from "../utils/authStorage";
 import {
@@ -34,6 +35,17 @@ export interface AdminUserFilters {
   limit?: number;
 }
 
+export interface SignupPayload {
+  full_name: string;
+  email: string;
+  phone_number: string;
+  department_id: number;
+  password: string;
+  confirm_password: string;
+  embedding: number[];
+  liveness: true;
+}
+
 export interface CreateUserPayload {
   full_name: string;
   email: string;
@@ -55,14 +67,7 @@ export interface UpdateUserPayload {
 }
 
 export const authService = {
-  async signup(payload: {
-    full_name: string;
-    email: string;
-    phone_number: string;
-    department_id: number;
-    password: string;
-    confirm_password: string;
-  }): Promise<{ message: string }> {
+  async signup(payload: SignupPayload): Promise<{ message: string }> {
     const res = await api.post("/auth/signup", payload);
     return res.data;
   },
@@ -137,8 +142,8 @@ export const attendanceService = {
 
   /**
    * Pre-check a GPS reading against the school geofence. The server runs the
-   * exact same geofence rules used at submission time; the returned status is
-   * informational only and never grants attendance on its own.
+   * same geofence rules used at submission time. This result is informational
+   * only and never grants attendance on its own.
    */
   async verifyLocation(payload: {
     latitude: number;
@@ -175,7 +180,9 @@ export const settingsService = {
     return res.data.data.settings;
   },
 
-  async updateSettings(payload: UpdateSettingsPayload): Promise<SchoolSettings> {
+  async updateSettings(
+    payload: UpdateSettingsPayload
+  ): Promise<SchoolSettings> {
     const res = await api.put("/admin/settings", payload);
     return res.data.data.settings;
   }
@@ -202,7 +209,9 @@ export const adminService = {
     return res.data.data.user;
   },
 
-  async users(filters: AdminUserFilters): Promise<PaginatedResult<User>> {
+  async users(
+    filters: AdminUserFilters
+  ): Promise<PaginatedResult<User>> {
     const res = await api.get("/admin/users", { params: filters });
     return res.data.data;
   },
@@ -212,12 +221,19 @@ export const adminService = {
     return res.data.data.user;
   },
 
-  async updateUser(id: number, payload: UpdateUserPayload): Promise<User> {
+  async updateUser(
+    id: number,
+    payload: UpdateUserPayload
+  ): Promise<User> {
     const res = await api.patch(`/admin/users/${id}`, payload);
     return res.data.data.user;
   },
 
-  async resetPassword(id: number, password: string, confirmPassword: string): Promise<void> {
+  async resetPassword(
+    id: number,
+    password: string,
+    confirmPassword: string
+  ): Promise<void> {
     await api.post(`/admin/users/${id}/reset-password`, {
       password,
       confirm_password: confirmPassword
@@ -237,17 +253,28 @@ export const adminService = {
     const { page: _page, limit: _limit, ...clean } = filters;
     void _page;
     void _limit;
-    const res = await api.get("/admin/attendance/export", { params: clean });
+
+    const res = await api.get("/admin/attendance/export", {
+      params: clean
+    });
+
     return res.data.data.records;
   },
 
   async dashboardStats(date?: string): Promise<DashboardStats> {
-    const res = await api.get("/admin/dashboard/stats", { params: date ? { date } : {} });
+    const res = await api.get("/admin/dashboard/stats", {
+      params: date ? { date } : {}
+    });
+
     return res.data.data;
   },
 
   async exportPdf(filters: AdminAttendanceFilters): Promise<void> {
-    await downloadExport("/admin/reports/attendance/pdf", filters, "attendance-report.pdf");
+    await downloadExport(
+      "/admin/reports/attendance/pdf",
+      filters,
+      "attendance-report.pdf"
+    );
   },
 
   async exportExcel(filters: AdminAttendanceFilters): Promise<void> {
@@ -266,12 +293,15 @@ async function downloadExport(
 ): Promise<void> {
   const token = getToken();
   const searchParams = new URLSearchParams();
+
   if (params.date) searchParams.set("date", params.date);
   if (params.status) searchParams.set("status", params.status);
   if (params.search) searchParams.set("search", params.search);
+
   if (params.department !== undefined && params.department !== "") {
     searchParams.set("department", String(params.department));
   }
+
   const query = searchParams.toString();
   const requestUrl = `${API_BASE_URL}${url}${query ? `?${query}` : ""}`;
 
@@ -281,18 +311,21 @@ async function downloadExport(
 
   if (!res.ok) {
     let message = "Export failed. Please try again.";
+
     try {
       const data = await res.json();
       if (data?.message) message = data.message;
     } catch {
-      // ignore non-JSON error bodies
+      // Ignore non-JSON error bodies.
     }
+
     throw new Error(message);
   }
 
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
+
   link.href = objectUrl;
   link.download = fileName;
   document.body.appendChild(link);
