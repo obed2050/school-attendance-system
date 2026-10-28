@@ -1,7 +1,14 @@
 
-import { useState, FormEvent, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { GraduationCap, ScanFace, UserRound, ArrowLeft, CheckCircle2 } from "lucide-react";
+import {
+  GraduationCap,
+  ScanFace,
+  UserRound,
+  ArrowLeft,
+  CheckCircle2
+} from "lucide-react";
+
 import { authService, departmentService } from "../services";
 import { getErrorMessage } from "../services/api";
 import { Input } from "../components/ui/Input";
@@ -10,7 +17,7 @@ import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { FaceCapture } from "../components/FaceCapture";
 import type { LiveFaceResult } from "../utils/faceDetection";
-import { Department } from "../types";
+import type { Department } from "../types";
 
 interface FormErrors {
   full_name?: string;
@@ -103,14 +110,14 @@ export function SignupPage() {
   }
 
   function handleFaceCaptured(result: LiveFaceResult) {
-    if (
-      !result.livenessPassed ||
-      !Array.isArray(result.descriptor) ||
-      result.descriptor.length !== 128 ||
-      !result.descriptor.every(
+    const validDescriptor =
+      Array.isArray(result.descriptor) &&
+      result.descriptor.length === 128 &&
+      result.descriptor.every(
         (value) => Number.isFinite(value)
-      )
-    ) {
+      );
+
+    if (!result.livenessPassed || !validDescriptor) {
       setFaceResult(null);
       setErrors({
         general:
@@ -134,7 +141,11 @@ export function SignupPage() {
     if (
       !faceResult ||
       !faceResult.livenessPassed ||
-      faceResult.descriptor.length !== 128
+      !Array.isArray(faceResult.descriptor) ||
+      faceResult.descriptor.length !== 128 ||
+      !faceResult.descriptor.every(
+        (value) => Number.isFinite(value)
+      )
     ) {
       setErrors({
         general:
@@ -148,16 +159,7 @@ export function SignupPage() {
     setErrors({});
 
     try {
-      /*
-       * The backend signup endpoint must accept `embedding` and `liveness`,
-       * encrypt and store the face template, and create the account only
-       * after validating the supplied face data.
-       *
-       * The cast preserves compatibility with an existing signup method
-       * whose TypeScript payload type may not yet include these two fields.
-       * It does not change the data sent at runtime.
-       */
-      const signupPayload = {
+      await authService.signup({
         full_name: form.full_name.trim(),
         email: form.email.trim(),
         phone_number: form.phone_number.trim(),
@@ -165,12 +167,8 @@ export function SignupPage() {
         password: form.password,
         confirm_password: form.confirm_password,
         embedding: faceResult.descriptor,
-        liveness: faceResult.livenessPassed
-      };
-
-      await authService.signup(
-        signupPayload as Parameters<typeof authService.signup>[0]
-      );
+        liveness: true
+      });
 
       setSuccess(true);
     } catch (err) {
@@ -334,7 +332,9 @@ export function SignupPage() {
                 type="password"
                 placeholder="Re-enter password"
                 value={form.confirm_password}
-                onChange={(e) => setField("confirm_password", e.target.value)}
+                onChange={(e) =>
+                  setField("confirm_password", e.target.value)
+                }
                 error={errors.confirm_password}
                 autoComplete="new-password"
               />
