@@ -1,61 +1,174 @@
-import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Manage a `getUserMedia` video stream bound to a <video> element for the
- * face-capture and liveness screens. The stream is always torn down when the
- * component unmounts so the camera light turns off and no feed is left open.
- */
-export function useFaceCamera(videoRef: RefObject<HTMLVideoElement>) {
+import {
+  RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+export function useFaceCamera(
+  videoRef: RefObject<HTMLVideoElement>
+) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+
   const streamRef = useRef<MediaStream | null>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(false);
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    // Invalidates any getUserMedia request that is still pending.
+    requestIdRef.current += 1;
+
+    const stream = streamRef.current;
     streamRef.current = null;
-    setCameraReady(false);
-  }, []);
+
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    const video = videoRef.current;
+
+    if (video && (!stream || video.srcObject === stream)) {
+      video.pause();
+      video.srcObject = null;
+    }
+
+    if (mountedRef.current) {
+      setCameraReady(false);
+    }
+  }, [videoRef]);
 
   const startCamera = useCallback(async () => {
     stopCamera();
     setCameraError(null);
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera access is not supported in this browser.");
+      setCameraError(
+        "Camera access is not supported in this browser. Use a supported browser and HTTPS."
+      );
       return;
     }
 
+    const requestId = requestIdRef.current;
+    let acquiredStream: MediaStream | null = null;
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      acquiredStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           facingMode: "user",
           width: { ideal: 640 },
-          height: { ideal: 480 }
-        }
+          height: { ideal: 480 },
+        },
       });
-      streamRef.current = stream;
+
+      // If a newer request started or the component was unmounted,
+      // stop this stream instead of attaching it.
+      if (
+        requestId !== requestIdRef.current ||
+        !mountedRef.current
+      ) {
+        acquiredStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      streamRef.current = acquiredStream;
 
       const video = videoRef.current;
+
       if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
+        acquiredStream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         return;
       }
 
-      video.srcObject = stream;
+      video.srcObject = acquiredStream;
       await video.play();
+
+      // The request may have been cancelled while video.play() was pending.
+      if (
+        requestId !== requestIdRef.current ||
+        !mountedRef.current ||
+        streamRef.current !== acquiredStream
+      ) {
+        acquiredStream.getTracks().forEach((track) => track.stop());
+
+        if (video.srcObject === acquiredStream) {
+          video.pause();
+          video.srcObject = null;
+        }
+
+        return;
+      }
+
       setCameraReady(true);
-    } catch {
-      setCameraError(
-        "Camera permission was denied. Please allow camera access and try again."
-      );
+    } catch (error: unknown) {
+      if (acquiredStream) {
+        acquiredStream.getTracks().forEach((track) => track.stop());
+
+        if (streamRef.current === acquiredStream) {
+          streamRef.current = null;
+        }
+
+        const video = videoRef.current;
+
+        if (video?.srcObject === acquiredStream) {
+          video.pause();
+          video.srcObject = null;
+        }
+      }
+
+      // Do not show errors for an obsolete request.
+      if (
+        requestId !== requestIdRef.current ||
+        !mountedRef.current
+      ) {
+        return;
+      }
+
+      setCameraReady(false);
+
+      const errorName =
+        error instanceof Error ? error.name : "";
+
+      if (
+        errorName === "NotAllowedError" ||
+        errorName === "SecurityError"
+      ) {
+        setCameraError(
+          "Camera permission was denied. Allow camera access in your browser settings and try again."
+        );
+      } else if (errorName === "NotFoundError") {
+        setCameraError(
+          "No camera was found. Connect or enable a camera and try again."
+        );
+      } else if (errorName === "NotReadableError") {
+        setCameraError(
+          "The camera may be in use by another application. Close that application and try again."
+        );
+      } else {
+        setCameraError(
+          "The camera could not be started. Check your camera connection and browser permissions, then try again."
+        );
+      }
     }
-  }, [videoRef, stopCamera]);
+  }, [stopCamera, videoRef]);
 
   useEffect(() => {
-    return () => stopCamera();
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      stopCamera();
+    };
   }, [stopCamera]);
 
-  return { startCamera, stopCamera, cameraReady, cameraError };
+  return {
+    startCamera,
+    stopCamera,
+    cameraReady,
+    cameraError,
+  };
 }
