@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { Camera, RefreshCw, ScanFace } from "lucide-react";
 
@@ -103,8 +102,6 @@ export function FaceCapture({
 
     setCapturing(false);
     setBlinksSoFar(0);
-
-    // Cancelling capture also releases the camera.
     stopCamera();
   }
 
@@ -143,13 +140,10 @@ export function FaceCapture({
       const result = await runLiveFaceSession(video, {
         minBlinks,
         minTrackedMs,
-        timeoutMs: 20_000,
+        timeoutMs: 20000,
         signal: controller.signal,
         onProgress: ({ blinks }) => {
-          if (
-            mountedRef.current &&
-            !controller.signal.aborted
-          ) {
+          if (mountedRef.current && !controller.signal.aborted) {
             setBlinksSoFar(blinks);
           }
         },
@@ -170,7 +164,6 @@ export function FaceCapture({
         return;
       }
 
-      // Release the camera before notifying the parent component.
       setCapturing(false);
       captureAbortRef.current = null;
       stopCamera();
@@ -181,8 +174,7 @@ export function FaceCapture({
         return;
       }
 
-      const errorName =
-        error instanceof Error ? error.name : "";
+      const errorName = error instanceof Error ? error.name : "";
 
       if (errorName === "TimeoutError") {
         setCaptureError(
@@ -206,12 +198,12 @@ export function FaceCapture({
     }
   }
 
+  const displayedError = cameraError || captureError || modelsError;
+
   return (
     <div className="space-y-4">
-      {(cameraError || captureError || modelsError) && (
-        <Alert variant="error" message={error ?? ""} />
-          {cameraError || captureError || modelsError}
-        </Alert>
+      {displayedError && (
+        <Alert variant="error" message={displayedError} />
       )}
 
       <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-black">
@@ -253,9 +245,7 @@ export function FaceCapture({
         )}
       </div>
 
-      {hint && (
-        <p className="text-sm text-gray-600">{hint}</p>
-      )}
+      {hint && <p className="text-sm text-gray-600">{hint}</p>}
 
       <div className="flex flex-wrap gap-3">
         {!cameraReady ? (
@@ -268,10 +258,7 @@ export function FaceCapture({
             Cancel verification
           </Button>
         ) : (
-          <Button
-            onClick={handleStartCapture}
-            disabled={modelsLoading}
-          >
+          <Button onClick={handleStartCapture} disabled={modelsLoading}>
             {modelsLoading ? (
               <Spinner />
             ) : (
