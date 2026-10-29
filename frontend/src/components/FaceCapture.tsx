@@ -140,7 +140,9 @@ export function FaceCapture({
       const result = await runLiveFaceSession(video, {
         minBlinks,
         minTrackedMs,
-        timeoutMs: 20000,
+        timeoutMs: 45000,
+        blinkMaxMs: 500,
+        earThresh: 0.24,
         signal: controller.signal,
         onProgress: ({ blinks }) => {
           if (mountedRef.current && !controller.signal.aborted) {
@@ -178,7 +180,7 @@ export function FaceCapture({
 
       if (errorName === "TimeoutError") {
         setCaptureError(
-          "Face verification took too long. Make sure your face is clearly visible and try again."
+          "Face verification took too long. Keep your face centered, look at the camera, blink naturally twice, and try again."
         );
       } else if (errorName === "AbortError") {
         setCaptureError("Face verification was cancelled.");
