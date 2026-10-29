@@ -209,7 +209,7 @@ export function FaceCapture({
   return (
     <div className="space-y-4">
       {(cameraError || captureError || modelsError) && (
-        <Alert variant="error">
+        <Alert variant="error" message={error ?? ""} />
           {cameraError || captureError || modelsError}
         </Alert>
       )}
