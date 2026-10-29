@@ -1,6 +1,5 @@
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { getToken } from "../utils/authStorage";
-import { ApiErrorData } from "../types";
 
 /**
  * API base URL. In development calls go through the Vite proxy (`/api`).
